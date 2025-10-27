@@ -242,6 +242,143 @@
       </div>
     </div>
   </footer>
+  <main class="chat">
+      <div class="messages" id="messages" aria-live="polite"></div>
+
+      <div style="padding:12px 18px;">
+        <div class="system-note">
+          This page includes a mock chatbot mode that works out of the box. To connect to OpenAI (or another LLM) run a small server (example included) and toggle to "Server" mode below.
+        </div>
+      </div>
+
+      <footer>
+        <div style="display:flex;align-items:center;gap:12px;flex:1;">
+          <textarea id="input" placeholder="Type your message..." aria-label="Message input"></textarea>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button id="sendBtn">Send</button>
+            <button id="clearBtn" style="background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--muted);padding:8px 10px;">Clear</button>
+          </div>
+        </div>
+
+        <div class="controls">
+          <label class="switch">
+            <input id="modeToggle" type="checkbox" />
+            <span>Use server</span>
+          </label>
+          <small class="hint">Server endpoint: POST /chat</small>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // Basic chat front-end that supports:
+    // - Mock mode (no server): replies echoing the user.
+    // - Server mode: POST /chat with JSON { messages: [ {role, content}, ... ] }
+    //   Server should return JSON { message: { role: "assistant", content: "..." } }
+    // Security note: never put your OpenAI API key in the frontend. Use a server-side proxy.
+
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const modeToggle = document.getElementById('modeToggle');
+    const statusEl = document.getElementById('status');
+
+    let conversation = [
+      { role: 'system', content: 'You are a helpful assistant.' }
+    ];
+
+    function renderMessage(role, text) {
+      const el = document.createElement('div');
+      el.className = 'msg ' + (role === 'user' ? 'user' : 'assistant');
+      el.textContent = text;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    async function sendToServer(messages) {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages })
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error('Server error: ' + err);
+      }
+      return res.json();
+    }
+
+    function mockReply(userText) {
+      // A tiny, deterministic mock reply. Replace with a better local bot if you want.
+      if (userText.trim().toLowerCase().includes('hello')) return "Hello! How can I help you today?";
+      if (userText.trim().endsWith('?')) return "That's an interesting question. I think the answer depends on context — can you give more details?";
+      return "You said: " + userText;
+    }
+
+    async function handleSend() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      inputEl.value = '';
+      renderMessage('user', text);
+      conversation.push({ role: 'user', content: text });
+
+      setStatus('Thinking...');
+      sendBtn.disabled = true;
+
+      try {
+        if (modeToggle.checked) {
+          // server mode
+          const data = await sendToServer(conversation);
+          // Expecting { message: { role, content } } from server
+          const assistantMessage = (data && data.message && data.message.content) ? data.message.content : JSON.stringify(data);
+          renderMessage('assistant', assistantMessage);
+          conversation.push({ role: 'assistant', content: assistantMessage });
+        } else {
+          // mock mode
+          const reply = mockReply(text);
+          // small artificial delay to feel natural
+          await new Promise(r => setTimeout(r, 350));
+          renderMessage('assistant', reply);
+          conversation.push({ role: 'assistant', content: reply });
+        }
+      } catch (err) {
+        renderMessage('assistant', 'Error: ' + (err.message || err));
+      } finally {
+        setStatus(modeToggle.checked ? 'Mode: Server' : 'Mode: Mock (no server)');
+        sendBtn.disabled = false;
+      }
+    }
+
+    sendBtn.addEventListener('click', handleSend);
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      messagesEl.innerHTML = '';
+      conversation = [{ role: 'system', content: 'You are a helpful assistant.' }];
+    });
+
+    modeToggle.addEventListener('change', () => {
+      if (modeToggle.checked) {
+        setStatus('Mode: Server (POST /chat)');
+      } else {
+        setStatus('Mode: Mock (no server)');
+      }
+    });
+
+    // initial welcome
+    renderMessage('assistant', 'Hi! This is a demo chatbot. Type a message and press Enter or click Send.');
+  </script>
 
   <script src="script.js"></script>
 </body>
